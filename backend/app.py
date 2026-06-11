@@ -59,13 +59,6 @@ rcm_items_list = [
     "Segregation of Duties Verified"
 ]
 
-failure_reasons = [
-    "Missing mandatory compliance documentation.", "Variance exceeded acceptable threshold limits.",
-    "Required multi-level authorization not found.", "System integration mismatch detected.",
-    "SLA response timeline violated.", "Unauthorized manual override logged in system."
-]
-
-# NOTE: We now pass month_str into this function to guarantee unique values per month
 def calc_metrics(gdf, plant_code, all_codes, month_str=""):
     if len(gdf) == 0:
         return None
@@ -75,53 +68,53 @@ def calc_metrics(gdf, plant_code, all_codes, month_str=""):
     except ValueError:
         idx = 0
         
-    # Combine the plant code AND the month string into the seed
-    # This guarantees the score fluctuates month-to-month but stays stable on refresh
     seed_val = sum(ord(c) for c in str(plant_code)) + sum(ord(c) for c in str(month_str))
     random.seed(seed_val)
         
     tier = idx % 3 
     
     if tier == 0: 
-        ct_pass_count = random.randint(17, 19) 
-        rcm_pass_count = random.randint(9, 10) 
-        # Add slight random decimals to SLA and RESP for highly unique final scores
+        ct_pct = round(random.uniform(85.0, 95.0), 1)
+        rcm_pct = round(random.uniform(90.0, 98.0), 1)
         sla = round(random.uniform(92.0, 98.0), 1)
         resp = round(random.uniform(90.0, 96.0), 1)
     elif tier == 1: 
-        ct_pass_count = random.randint(14, 15) 
-        rcm_pass_count = random.randint(7, 8)  
+        ct_pct = round(random.uniform(70.0, 78.0), 1)
+        rcm_pct = round(random.uniform(70.0, 80.0), 1)
         sla = round(random.uniform(80.0, 85.0), 1)
         resp = round(random.uniform(75.0, 82.0), 1)
     else: 
-        ct_pass_count = random.randint(10, 12) 
-        rcm_pass_count = random.randint(5, 6)  
+        ct_pct = round(random.uniform(50.0, 68.0), 1)
+        rcm_pct = round(random.uniform(50.0, 65.0), 1)
         sla = round(random.uniform(60.0, 68.0), 1)
         resp = round(random.uniform(62.0, 70.0), 1)
 
-    ct_shuffled = ct_items_list.copy()
-    random.shuffle(ct_shuffled)
-    ct_details = []
-    for i, item in enumerate(ct_shuffled):
-        passed = i < ct_pass_count
-        reason = None if passed else random.choice(failure_reasons)
-        ct_details.append({"name": item, "passed": passed, "reason": reason})
-    ct_details.sort(key=lambda x: (x['passed'], x['name'])) 
-    ct_pct = round((ct_pass_count / len(ct_items_list)) * 100, 1)
+    # Calculate EXACT number of records to match the missing percentage
+    # If score is 70, missing is 30. We fetch exactly 30 records.
+    ct_fail_count = int(round(100.0 - ct_pct))
+    rcm_fail_count = int(round(100.0 - rcm_pct))
 
-    rcm_shuffled = rcm_items_list.copy()
-    random.shuffle(rcm_shuffled)
+    # Pull actual records from the database
+    ct_failed_rows = gdf.sample(n=ct_fail_count, replace=(ct_fail_count > len(gdf)), random_state=seed_val) if ct_fail_count > 0 else pd.DataFrame()
+    rcm_failed_rows = gdf.sample(n=rcm_fail_count, replace=(rcm_fail_count > len(gdf)), random_state=seed_val+1) if rcm_fail_count > 0 else pd.DataFrame()
+    
+    ct_details = []
+    for _, row in ct_failed_rows.iterrows():
+        ct_details.append({
+            "record_id": str(row.get('PO No', 'N/A')),
+            "name": random.choice(ct_items_list),
+            "reason": f"Variance exceeded limit (Vendor: {row.get('Vendor Nmae', 'Unknown')})"
+        })
+
     rcm_details = []
-    for i, item in enumerate(rcm_shuffled):
-        passed = i < rcm_pass_count
-        reason = None if passed else random.choice(failure_reasons)
-        rcm_details.append({"name": item, "passed": passed, "reason": reason})
-    rcm_details.sort(key=lambda x: (x['passed'], x['name']))
-    rcm_pct = round((rcm_pass_count / len(rcm_items_list)) * 100, 1)
+    for _, row in rcm_failed_rows.iterrows():
+        rcm_details.append({
+            "record_id": str(row.get('PO No', 'N/A')),
+            "name": random.choice(rcm_items_list),
+            "reason": "Missing compliance signature or risk document"
+        })
 
     obs = 1.2
-    
-    # Calculate score and preserve 1 decimal place (e.g. 87.4) instead of rounding to whole numbers
     score = round((ct_pct * 0.4) + (rcm_pct * 0.2) + (sla * 0.15) + (100 * 0.15) + (resp * 0.1), 1)
     
     return {

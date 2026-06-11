@@ -14,7 +14,6 @@ const formatMonthYear = (ymStr) => {
   return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
-// Shorter formatting for X-Axis to prevent overlapping (e.g. "Sep '24")
 const formatTinyMonthYear = (ymStr) => {
   if (!ymStr) return '';
   const [year, month] = ymStr.split('-');
@@ -150,14 +149,13 @@ function TrendLine({ trend, status, activeMonth, onMonthClick }) {
   const mx = validScores.length ? Math.max(...validScores) + 6 : 100;
   
   const pts = trend.map((t, i) => {
-    // Prevent divide by zero if length is 1
     const x = trend.length > 1 ? p.l + (i / (trend.length - 1)) * iW : p.l + iW / 2;
     return {
       x,
       y: t.score !== null ? p.t + iH - (t.score - mn) / (mx - mn) * iH : null,
       score: t.score, 
       rawMonth: t.month,
-      monthLabel: formatTinyMonthYear(t.month) // "Sep '24" ensures alignment
+      monthLabel: formatTinyMonthYear(t.month)
     };
   });
   
@@ -192,13 +190,15 @@ function TrendLine({ trend, status, activeMonth, onMonthClick }) {
         
       {pts.map((pt, i) => {
         const isActive = pt.rawMonth === activeMonth;
+        const nodeColor = isActive ? 'var(--blue)' : col;
+        
         return (
           <g key={i}>
             <text x={pt.x} y={H - p.b + 16} textAnchor="middle" fontSize="8.5" fill={pt.y ? "rgba(90,116,153,.75)" : "rgba(90,116,153,.25)"} fontWeight={isActive ? '700' : '500'}>{pt.monthLabel}</text>
             {pt.y !== null && (
               <g onClick={() => onMonthClick(pt.rawMonth)} style={{ cursor: 'pointer' }} className="trend-node">
-                <circle cx={pt.x} cy={pt.y} r={isActive ? "7" : "5"} fill={col} stroke="var(--bg)" strokeWidth={isActive ? "3" : "2"} style={{ transition: 'all 0.2s' }} />
-                <text x={pt.x} y={pt.y - (isActive ? 14 : 10)} textAnchor="middle" fontSize="10" fill={col} fontWeight="600" className="num">{pt.score}</text>
+                <circle cx={pt.x} cy={pt.y} r={isActive ? "7" : "5"} fill={nodeColor} stroke="var(--bg)" strokeWidth={isActive ? "4" : "2"} style={{ transition: 'all 0.2s' }} />
+                <text x={pt.x} y={pt.y - (isActive ? 14 : 10)} textAnchor="middle" fontSize="10" fill={nodeColor} fontWeight="600" className="num">{pt.score}</text>
               </g>
             )}
           </g>
@@ -342,7 +342,6 @@ function DetailPage({ plant, month, onBack }) {
             })}
             <tr>
               <td style={{ fontSize: '15px', color: 'var(--txt)' }}>Total Readiness Score</td><td></td><td></td>
-              {/* Formatted perfectly to .0 */}
               <td style={{ color: col, fontSize: '18px', fontWeight: 700 }} className="num">{score != null ? score.toFixed(1) : '—'}</td>
             </tr>
           </tbody>
@@ -351,12 +350,14 @@ function DetailPage({ plant, month, onBack }) {
 
       {activeDetail === 'control_test' && m.ct_details && (
         <div className="dc" style={{ animation: 'fu .4s ease both', border: '1px solid var(--red-bd)', background: 'var(--red-b)' }}>
-           <h3 style={{ color: 'var(--txt)' }}>Control Test Failures (Why {m.control_test != null ? (100 - m.control_test).toFixed(1) : '0'}% Failed)</h3>
+           {/* Exact number of records dynamically shown here */}
+           <h3 style={{ color: 'var(--txt)' }}>Control Test Failures ({m.ct_details.length} Records Failed)</h3>
            <table className="dtbl">
-             <thead><tr><th>Test Case</th><th>Status</th><th>Failure Reason</th></tr></thead>
+             <thead><tr><th>PO Number</th><th>Failed Test Case</th><th>Status</th><th>Failure Reason</th></tr></thead>
              <tbody>
-               {m.ct_details.filter(item => !item.passed).map((item, idx) => (
+               {m.ct_details.map((item, idx) => (
                  <tr key={idx}>
+                   <td className="num">{item.record_id}</td>
                    <td style={{ whiteSpace: 'normal', color: 'var(--txt)' }}>{item.name}</td>
                    <td><span className="tag re">Failed ❌</span></td>
                    <td style={{ whiteSpace: 'normal', opacity: 0.8 }}>{item.reason}</td>
@@ -369,12 +370,14 @@ function DetailPage({ plant, month, onBack }) {
 
       {activeDetail === 'rcm_completeness' && m.rcm_details && (
         <div className="dc" style={{ animation: 'fu .4s ease both', border: '1px solid var(--red-bd)', background: 'var(--red-b)' }}>
-           <h3 style={{ color: 'var(--txt)' }}>RCM Missing Controls (Why {m.rcm_completeness != null ? (100 - m.rcm_completeness).toFixed(1) : '0'}% Failed)</h3>
+           {/* Exact number of records dynamically shown here */}
+           <h3 style={{ color: 'var(--txt)' }}>RCM Missing Controls ({m.rcm_details.length} Records Failed)</h3>
            <table className="dtbl">
-             <thead><tr><th>Risk Control Action</th><th>Status</th><th>Failure Reason</th></tr></thead>
+             <thead><tr><th>PO Number</th><th>Risk Control Action</th><th>Status</th><th>Failure Reason</th></tr></thead>
              <tbody>
-               {m.rcm_details.filter(item => !item.passed).map((item, idx) => (
+               {m.rcm_details.map((item, idx) => (
                  <tr key={idx}>
+                   <td className="num">{item.record_id}</td>
                    <td style={{ whiteSpace: 'normal', color: 'var(--txt)' }}>{item.name}</td>
                    <td><span className="tag re">Failed ❌</span></td>
                    <td style={{ whiteSpace: 'normal', opacity: 0.8 }}>{item.reason}</td>
@@ -484,7 +487,7 @@ export default function App() {
       
       <nav className="nav">
         <a className="nav-logo" href="#" onClick={e => { e.preventDefault(); goBack() }}></a>
-         <img src="/logo.png" alt="Partner Logo" style={{ height: '32px', objectFit: 'contain' }} />
+        <img src="/logo.png" alt="Partner Logo" style={{ height: '32px', objectFit: 'contain' }} />
         <div className="nav-chip" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div className="live-dot" /> LIVE
         </div>
