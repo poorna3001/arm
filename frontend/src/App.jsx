@@ -208,16 +208,17 @@ function TrendLine({ trend, status, activeMonth, onMonthClick }) {
   );
 }
 
-function PlantCard({ plant, idx, onSelect }) {
+function PlantCard({ plant, idx, onSelect, mode }) {
   const c = sc(plant.status);
   const col = clr(plant.status);
   const isPending = plant.status === 'Pending';
+  const label = mode === 'LRS' ? 'LOCATION' : 'PROCESS';
   
   return (
     <div className={`pcard ${c} ca`} style={{ animationDelay: `${idx * 65}ms` }} onClick={() => !isPending && onSelect(plant)}>
       <div className="ch">
         <div>
-          <div className="cid">PLANT <span className="num">{plant.plant}</span></div>
+          <div className="cid">{label} <span className="num">{plant.plant}</span></div>
           <div className="cname2">{plant.description}</div>
         </div>
         <span className={`badge ${c}`}>{labelMapping(plant.status)}</span>
@@ -254,7 +255,7 @@ function PlantCard({ plant, idx, onSelect }) {
   );
 }
 
-function DetailPage({ plant, month, onBack }) {
+function DetailPage({ plant, month, mode, onBack }) {
   const [localMonth, setLocalMonth] = useState(month);
   const [det, sdet] = useState(null);
   const [activeDetail, setActiveDetail] = useState(null); 
@@ -262,14 +263,15 @@ function DetailPage({ plant, month, onBack }) {
   useEffect(() => { setLocalMonth(month) }, [month]);
 
   useEffect(() => {
-    fetch(`${API}/plant/${plant.plant}?month=${localMonth}`).then(r => r.json()).then(sdet);
+    fetch(`${API}/plant/${plant.plant}?month=${localMonth}&mode=${mode}`).then(r => r.json()).then(sdet);
     setActiveDetail(null); 
-  }, [plant.plant, localMonth]);
+  }, [plant.plant, localMonth, mode]);
 
   const m = det?.metrics || {}; 
   const status = m.status || plant.status; 
   const score = m.score || plant.score;
   const col = clr(status);
+  const desc = det?.description || plant.description;
 
   const toggleRow = (k) => {
     if (k === 'control_test' || k === 'rcm_completeness') {
@@ -292,10 +294,10 @@ function DetailPage({ plant, month, onBack }) {
         Back to Readiness Meter
       </button>
       <div style={{ marginBottom: 18 }}>
-        <div style={{ fontFamily: 'var(--fd)', fontSize: 26, fontWeight: 800, letterSpacing: '-.5px' }}>{plant.description}</div>
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 26, fontWeight: 800, letterSpacing: '-.5px' }}>{desc}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
           <span className={`badge ${sc(status)}`}>{labelMapping(status)}</span>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Plant <span className="num">{plant.plant}</span></span>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{mode === 'LRS' ? 'Location' : 'Process'} <span className="num">{plant.plant}</span></span>
         </div>
       </div>
 
@@ -350,10 +352,16 @@ function DetailPage({ plant, month, onBack }) {
 
       {activeDetail === 'control_test' && m.ct_details && (
         <div className="dc" style={{ animation: 'fu .4s ease both', border: '1px solid var(--red-bd)', background: 'var(--red-b)' }}>
-           {/* Exact number of records dynamically shown here */}
-           <h3 style={{ color: 'var(--txt)' }}>Control Test Failures ({m.ct_details.length} Records Failed)</h3>
+           <h3 style={{ color: 'var(--txt)' }}>{mode === 'LRS' ? 'Control Test Failures' : 'Design Assessment Failures'} ({m.ct_details.length} Records Failed)</h3>
            <table className="dtbl">
-             <thead><tr><th>PO Number</th><th>Failed Test Case</th><th>Status</th><th>Failure Reason</th></tr></thead>
+             <thead>
+               <tr>
+                 <th>{mode === 'LRS' ? 'PO Number' : 'Control Ref No'}</th>
+                 <th>{mode === 'LRS' ? 'Material / Description' : 'Control Activity'}</th>
+                 <th>Status</th>
+                 <th>{mode === 'LRS' ? 'Failure Reason' : 'Risk Description'}</th>
+               </tr>
+             </thead>
              <tbody>
                {m.ct_details.map((item, idx) => (
                  <tr key={idx}>
@@ -370,10 +378,16 @@ function DetailPage({ plant, month, onBack }) {
 
       {activeDetail === 'rcm_completeness' && m.rcm_details && (
         <div className="dc" style={{ animation: 'fu .4s ease both', border: '1px solid var(--red-bd)', background: 'var(--red-b)' }}>
-           {/* Exact number of records dynamically shown here */}
            <h3 style={{ color: 'var(--txt)' }}>RCM Missing Controls ({m.rcm_details.length} Records Failed)</h3>
            <table className="dtbl">
-             <thead><tr><th>PO Number</th><th>Risk Control Action</th><th>Status</th><th>Failure Reason</th></tr></thead>
+             <thead>
+               <tr>
+                 <th>{mode === 'LRS' ? 'PO Number' : 'Control Ref No'}</th>
+                 <th>{mode === 'LRS' ? 'General Requirement' : 'Control Classification'}</th>
+                 <th>Status</th>
+                 <th>Failure Reason</th>
+               </tr>
+             </thead>
              <tbody>
                {m.rcm_details.map((item, idx) => (
                  <tr key={idx}>
@@ -392,7 +406,7 @@ function DetailPage({ plant, month, onBack }) {
   );
 }
 
-function Dashboard({ months, allPlants, onCard }) {
+function Dashboard({ months, allPlants, onCard, mode }) {
   const [month, sm] = useState(''); const [sel, ss] = useState([]);
   const [data, sd] = useState(null); const [loading, sl] = useState(false); const [err, se] = useState(null);
 
@@ -400,21 +414,41 @@ function Dashboard({ months, allPlants, onCard }) {
   
   useEffect(() => {
     if (!month) return; sl(true); se(null);
-    const p = new URLSearchParams({ month }); sel.forEach(pl => p.append('plants', pl));
+    const p = new URLSearchParams({ month, mode }); sel.forEach(pl => p.append('plants', pl));
     fetch(`${API}/readiness?${p}`).then(r => r.json()).then(d => { sd(d); sl(false) })
       .catch(() => { se('Cannot connect to backend. Start Python server: cd backend && python app.py'); sl(false) });
-  }, [month, sel]);
+  }, [month, sel, mode]);
+
+  if (months.length === 0 && !loading && !err) {
+    return (
+      <div className="err" style={{ padding: '40px', textAlign: 'center', fontSize: '15px' }}>
+        <h2 style={{ marginBottom: '10px', color: '#fff' }}>⚠️ Database is Empty or Cannot Connect</h2>
+        <p>The dashboard is empty because it cannot read data from PostgreSQL.</p>
+        <p style={{ marginTop: '16px', color: '#fff' }}><strong>How to fix this:</strong></p>
+        <ul style={{ listStyle: 'none', margin: '10px auto', color: 'var(--muted)', display: 'inline-block', textAlign: 'left', lineHeight: '1.6' }}>
+          <li>1. Ensure your PostgreSQL server is running.</li>
+          <li>2. Open <b>setup_db.py</b>. Ensure the password in <code>DB_URI</code> matches yours.</li>
+          <li>3. Open your terminal and run: <code>python setup_db.py</code></li>
+          <li>4. Restart the backend: <code>python app.py</code> and refresh this page.</li>
+        </ul>
+      </div>
+    );
+  }
 
   const plants = data?.plants || []; 
   const sum = data?.summary || { High: 0, Medium: 0, Low: 0, Pending: 0 };
+  const insights = data?.insights || {};
+
+  const title = mode === 'LRS' ? 'Location Readiness Score (LRS)' : 'Process Readiness Score (PRS)';
+  const filterLabel = mode === 'LRS' ? 'Locations' : 'Processes';
 
   return (
     <>
       <div className="ph" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <img src="/logo3.png" alt="AjaLabs AI" style={{ height: '45px', objectFit: 'contain' }} />
+        <img src="/logo.png" alt="AjaLabs AI" style={{ height: '45px', objectFit: 'contain' }} />
         <div>
-          <h1>Audit Readiness Meter</h1>
-          <p>Monitor business unit audit readiness scores and trends</p>
+          <h1>{title}</h1>
+          <p>Monitor {mode === 'LRS' ? 'locations' : 'business process'} audit readiness scores and trends</p>
         </div>
       </div>
       {err && <div className="err">⚠️ {err}</div>}
@@ -428,7 +462,7 @@ function Dashboard({ months, allPlants, onCard }) {
           </div>
           <div className="fsec pa">
             <div className="phd">
-              <div className="flbl">Business Units</div>
+              <div className="flbl">{filterLabel}</div>
               <div className="slinks">
                 <span className="slink" onClick={() => ss(allPlants.map(p => p.plant))}>Select All</span>
                 <span className="slink" onClick={() => ss([])}>Clear All</span>
@@ -439,7 +473,7 @@ function Dashboard({ months, allPlants, onCard }) {
                 <label key={p.plant} className="ci">
                   <input type="checkbox" checked={sel.includes(p.plant)}
                     onChange={() => ss(prev => prev.includes(p.plant) ? prev.filter(x => x !== p.plant) : [...prev, p.plant])} />
-                  <div className="cc"><div className="ccode">Plant <span className="num">{p.plant}</span></div><div className="cname">{p.description}</div></div>
+                  <div className="cc"><div className="ccode">{mode === 'LRS' ? 'Location' : 'Process'} <span className="num">{p.plant}</span></div><div className="cname">{p.description}</div></div>
                 </label>
               ))}
             </div>
@@ -448,19 +482,44 @@ function Dashboard({ months, allPlants, onCard }) {
       </div>
 
       {data && (
-        <div className="sumrow">
-          {[['High', 'High', 'g', '🟢'], ['Medium', 'Medium', 'a', '🟡'], ['Low', 'Low', 'r', '🔴'], ['Pending', 'Pending', 'p', '⚪']].map(([lbl, backendKey, c, ico]) => (
-            <div key={backendKey} className={`scard ${c}`}>
-              <div className="sico">{ico}</div>
-              <div><div className={`scnt num ${c}`}>{sum[backendKey]}</div><div className="slbl">{lbl} Status</div></div>
+        <>
+          <div className="sumrow">
+            {[['High', 'High', 'g', '🟢'], ['Medium', 'Medium', 'a', '🟡'], ['Low', 'Low', 'r', '🔴'], ['Pending', 'Pending', 'p', '⚪']].map(([lbl, backendKey, c, ico]) => (
+              <div key={backendKey} className={`scard ${c}`}>
+                <div className="sico">{ico}</div>
+                <div><div className={`scnt num ${c}`}>{sum[backendKey]}</div><div className="slbl">{lbl} Status</div></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="insights-row">
+            <div className="insight-card">
+              <div className="insight-lbl">Highest Score (This Month)</div>
+              <div className="insight-val">{insights.top_performer.name}</div>
+              <div className="insight-sub num" style={{color: 'var(--grn)'}}>{insights.top_performer.score} Score</div>
             </div>
-          ))}
-        </div>
+            <div className="insight-card">
+              <div className="insight-lbl">Needs Attention (Lowest)</div>
+              <div className="insight-val">{insights.needs_attention.name}</div>
+              <div className="insight-sub num" style={{color: 'var(--red)'}}>{insights.needs_attention.score} Score</div>
+            </div>
+            <div className="insight-card">
+              <div className="insight-lbl">Most Improved (3 Months)</div>
+              <div className="insight-val">{insights.most_improved.name}</div>
+              <div className="insight-sub num" style={{color: 'var(--grn)'}}>+{insights.most_improved.change} Points</div>
+            </div>
+            <div className="insight-card">
+              <div className="insight-lbl">Needs Attention (3M Drop)</div>
+              <div className="insight-val">{insights.most_declined.name}</div>
+              <div className="insight-sub num" style={{color: 'var(--red)'}}>{insights.most_declined.change} Points</div>
+            </div>
+          </div>
+        </>
       )}
 
       {loading ? <div className="loading"><div className="spin" /><span className="ltxt">Loading…</span></div>
         : plants.length === 0 ? <div className="loading"><span className="ltxt">No data for selected filters</span></div>
-          : <div className="cgrid">{plants.map((p, i) => <PlantCard key={p.plant} plant={p} idx={i} onSelect={pl => onCard(pl, month)} />)}</div>
+          : <div className="cgrid">{plants.map((p, i) => <PlantCard key={p.plant} plant={p} idx={i} onSelect={pl => onCard(pl, month)} mode={mode} />)}</div>
       }
     </>
   );
@@ -470,11 +529,33 @@ export default function App() {
   const [months, sm] = useState([]); const [plants, sp] = useState([]);
   const [page, spg] = useState('dash'); const [selP, ssp] = useState(null); const [selM, ssm] = useState('');
   const [err, se] = useState(null);
+  
+  // 1. Initial State reads from the URL path so refreshing /lrs stays on LRS
+  const [mode, setMode] = useState(() => {
+    return window.location.pathname.toLowerCase().includes('/lrs') ? 'LRS' : 'PRS';
+  });
+
+  // 2. React to mode changes by rewriting the URL and fetching proper Plant/Process Lists
+  useEffect(() => {
+    const targetPath = mode === 'LRS' ? '/lrs' : '/prs';
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+    
+    fetch(`${API}/plants?mode=${mode}`).then(r => r.json()).then(p => { sp(p.plants || []) }).catch(() => se('Backend not reachable. Ensure app.py is running.'));
+  }, [mode]);
+
+  // 3. React to browser "Back" and "Forward" buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      setMode(window.location.pathname.toLowerCase().includes('/lrs') ? 'LRS' : 'PRS');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
-    Promise.all([fetch(`${API}/months`).then(r => r.json()), fetch(`${API}/plants`).then(r => r.json())])
-      .then(([m, p]) => { sm(m.months); sp(p.plants) })
-      .catch(() => se('Backend not reachable. Ensure app.py is running.'));
+    fetch(`${API}/months`).then(r => r.json()).then(m => sm(m.months || []));
   }, []);
 
   const goDetail = (plant, month) => { ssp(plant); ssm(month); spg('detail'); window.scrollTo({ top: 0, behavior: 'smooth' }) };
@@ -485,13 +566,16 @@ export default function App() {
       <div className="bg-c" /><div className="bg-g" />
       <div className="orb o1" /><div className="orb o2" /><div className="orb o3" />
       
+      <div className="top-mode-bar">
+        <button className={`mode-btn ${mode === 'PRS' ? 'active' : ''}`} onClick={() => { setMode('PRS'); goBack(); }}>PRS</button>
+        <button className={`mode-btn ${mode === 'LRS' ? 'active' : ''}`} onClick={() => { setMode('LRS'); goBack(); }}>LRS</button>
+      </div>
+
       <nav className="nav">
         <a className="nav-logo" href="#" onClick={e => { e.preventDefault(); goBack() }}></a>
-        <img src="/logo.png" alt="Partner Logo" style={{ height: '32px', objectFit: 'contain' }} />
         <div className="nav-chip" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div className="live-dot" /> LIVE
         </div>
-        
         <div className="nav-sp" /> 
         <img src="/logo2.png" alt="Partner Logo" style={{ height: '32px', objectFit: 'contain' }} />
       </nav>
@@ -499,8 +583,8 @@ export default function App() {
       <div className="wrap">
         {err && <div className="err">⚠️ {err}</div>}
         {page === 'dash'
-          ? <Dashboard months={months} allPlants={plants} onCard={goDetail} />
-          : <DetailPage plant={selP} month={selM} onBack={goBack} />
+          ? <Dashboard months={months} allPlants={plants} onCard={goDetail} mode={mode} />
+          : <DetailPage plant={selP} month={selM} mode={mode} onBack={goBack} />
         }
       </div>
 
